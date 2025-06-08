@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { JWTUtils } from '../utils/jwt';
 import logger from '../utils/logger';
+import db from '../services/DatabaseService';
 
 interface AuthenticatedRequest extends Request {
   user?: any;
@@ -11,7 +12,7 @@ export class AuthMiddleware {
   static authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const authHeader = req.headers.authorization;
-      
+
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         res.status(401).json({
           success: false,
@@ -21,30 +22,14 @@ export class AuthMiddleware {
       }
 
       const token = authHeader.substring(7);
-      
+
       // Verify token
       const payload = JWTUtils.verifyAccessToken(token);
-      
-      // Get user from database to ensure they still exist and are active
-      const { Client } = require('pg');
-      const { config } = require('../config');
-      
-      const client = new Client({
-        host: config.database.host,
-        port: config.database.port,
-        user: config.database.username,
-        password: config.database.password,
-        database: config.database.name,
-      });
 
-      await client.connect();
-      
-      const result = await client.query(
+      const result = await db.query(
         'SELECT id, username, email, role, tenant_id, branch_id, is_active FROM users WHERE id = $1',
         [payload.userId]
       );
-      
-      await client.end();
 
       if (result.rows.length === 0 || !result.rows[0].is_active) {
         res.status(401).json({
@@ -116,40 +101,40 @@ export class AuthMiddleware {
   };
 
   // Tenant isolation middleware
-static enforceTenantIsolation = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-   if (!req.user) {
-     res.status(401).json({
-       success: false,
-       message: 'Authentication required',
-     });
-     return;
-   }
+  static enforceTenantIsolation = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+      return;
+    }
 
-   // Super admin can access all tenants
-   if (req.user.role === 'super_admin') {
-     next();
-     return;
-   }
+    // Super admin can access all tenants
+    if (req.user.role === 'super_admin') {
+      next();
+      return;
+    }
 
-   // Extract tenant ID from request (URL parameter, body, or query)
-   const requestTenantId = req.params.tenantId || req.body.tenantId || req.query.tenantId;
+    // Extract tenant ID from request (URL parameter, body, or query)
+    const requestTenantId = req.params.tenantId || req.body.tenantId || req.query.tenantId;
 
-   if (requestTenantId && req.user.tenantId !== requestTenantId) {
-     logger.security('Tenant isolation violation attempt', {
-       userId: req.user.id,
-       userTenantId: req.user.tenantId,
-       requestedTenantId: requestTenantId,
-       ip: req.ip,
-       userAgent: req.get('User-Agent'),
-     });
+    if (requestTenantId && req.user.tenantId !== requestTenantId) {
+      logger.security('Tenant isolation violation attempt', {
+        userId: req.user.id,
+        userTenantId: req.user.tenantId,
+        requestedTenantId: requestTenantId,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+      });
 
-     res.status(403).json({
-       success: false,
-       message: 'Access denied: Tenant isolation violation',
-     });
-     return;
-   }
+      res.status(403).json({
+        success: false,
+        message: 'Access denied: Tenant isolation violation',
+      });
+      return;
+    }
 
-   next();
- };
+    next();
+  };
 }

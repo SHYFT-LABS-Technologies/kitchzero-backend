@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { JWTUtils } from '../utils/jwt';
 import { config } from '../config';
 import logger from '../utils/logger';
+import db from './DatabaseService';
 
 export interface LoginResult {
   user: {
@@ -20,21 +21,9 @@ export interface LoginResult {
 
 export class AuthService {
   static async login(username: string, password: string, ipAddress: string, userAgent: string): Promise<LoginResult> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
     try {
-      await client.connect();
-      
       // Find user by username or email
-      const result = await client.query(
+      const result = await db.query(
         'SELECT id, username, email, password, role, tenant_id, branch_id, is_active, must_change_password, failed_login_attempts, locked_until FROM users WHERE username = $1 OR email = $1',
         [username]
       );
@@ -85,7 +74,7 @@ export class AuthService {
           lockUntil = new Date(Date.now() + config.security.lockoutTime * 60 * 1000);
         }
 
-        await client.query(
+        await db.query(
           'UPDATE users SET failed_login_attempts = $1, locked_until = $2 WHERE id = $3',
           [newFailedAttempts, lockUntil, user.id]
         );
@@ -102,7 +91,7 @@ export class AuthService {
       }
 
       // Reset failed attempts on successful login
-      await client.query(
+      await db.query(
         'UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1',
         [user.id]
       );
@@ -120,7 +109,7 @@ export class AuthService {
       const refreshToken = JWTUtils.generateRefreshToken(tokenPayload);
 
       // Store refresh token in database
-      await client.query(
+      await db.query(
         'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
         [user.id, refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)] // 7 days
       );
@@ -144,31 +133,24 @@ export class AuthService {
         refreshToken,
         expiresIn: 15 * 60, // 15 minutes in seconds
       };
-
-    } finally {
-      await client.end();
+    } catch (error: any) {
+      logger.error('Authentication error:', {
+        error: error.message,
+        stack: error.stack,
+        username,
+        ip: ipAddress,
+      });
+      throw error;
     }
   }
 
   static async refreshToken(refreshTokenValue: string): Promise<{ accessToken: string; expiresIn: number }> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
     try {
-      await client.connect();
-
       // Verify refresh token
       const payload = JWTUtils.verifyRefreshToken(refreshTokenValue);
 
       // Check if refresh token exists in database and is not revoked
-      const tokenResult = await client.query(
+      const tokenResult = await db.query(
         'SELECT id, user_id, expires_at, is_revoked FROM refresh_tokens WHERE token = $1',
         [refreshTokenValue]
       );
@@ -184,7 +166,7 @@ export class AuthService {
       }
 
       // Get user data
-      const userResult = await client.query(
+      const userResult = await db.query(
         'SELECT id, username, role, tenant_id, branch_id, is_active FROM users WHERE id = $1',
         [tokenRecord.user_id]
       );
@@ -210,26 +192,17 @@ export class AuthService {
         accessToken: newAccessToken,
         expiresIn: 15 * 60, // 15 minutes in seconds
       };
-
-    } finally {
-      await client.end();
+    } catch (error: any) {
+      logger.error('Token refresh error:', {
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
     }
   }
 
   static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
-    try {
-      await client.connect();
-
+    return await db.transaction(async (client) => {
       // Get user
       const result = await client.query(
         'SELECT id, password FROM users WHERE id = $1',
@@ -272,9 +245,6 @@ export class AuthService {
       );
 
       logger.audit('password_change', userId);
-
-    } finally {
-      await client.end();
-    }
+    });
   }
 }

@@ -4,10 +4,13 @@ npm-debug.log*
 
 # Production build
 dist/
+dist-dev/
+dist-test/
 build/
 
 # Environment variables
 .env
+.env.test
 .env.local
 .env.production
 
@@ -40,3 +43,22 @@ $RECYCLE.BIN/
 # Temporary folders
 tmp/
 temp/
+
+# Test logs
+logs/test/
+
+# Test generated files (add to existing .gitignore)
+tests/**/*.js
+tests/**/*.js.map
+tests/**/*.d.ts
+scripts/**/*.js.map
+scripts/**/*.d.ts
+**/*.tsbuildinfo
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Generated declaration files (keep only source .d.ts files)
+**/*.d.ts
+!src/**/*.d.ts
+!types/**/*.d.ts

@@ -116,9 +116,9 @@ export const errorHandler = (error: any, req: Request, res: Response, next: Next
   res.status(statusCode).json(response);
 };
 
-// Async error wrapper with better error handling
-export const asyncHandler = (fn: Function) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+// Fixed async error wrapper
+export const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<void | any>) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch((error) => {
       // Transform database errors into more user-friendly messages
       if (error.code === 'ECONNREFUSED') {
@@ -131,7 +131,6 @@ export const asyncHandler = (fn: Function) => {
     });
   };
 };
-
 // 404 handler
 export const notFoundHandler = (req: Request, res: Response, next: NextFunction): void => {
   const error = new NotFoundError(`Route ${req.method} ${req.path} not found`);

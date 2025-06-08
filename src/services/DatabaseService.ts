@@ -1,6 +1,18 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, QueryResult } from 'pg';
 import { config } from '../config';
 import logger from '../utils/logger';
+
+interface DatabaseStats {
+  totalConnections: number;
+  idleConnections: number;
+  waitingClients: number;
+  currentTime?: string;
+}
+
+interface HealthCheckResult {
+  healthy: boolean;
+  stats: DatabaseStats | { error: string };
+}
 
 class DatabaseService {
   private pool: Pool;
@@ -18,7 +30,7 @@ class DatabaseService {
       max: 20, // maximum connections  
       idleTimeoutMillis: 30000, // close idle connections after 30s
       connectionTimeoutMillis: 10000, // timeout when connecting
-      acquireTimeoutMillis: 60000, // timeout when acquiring connection
+      // Note: acquireTimeoutMillis is not a valid pg Pool option, removed
       // Health check
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
@@ -30,7 +42,10 @@ class DatabaseService {
     });
 
     this.pool.on('error', (err: Error) => {
-      logger.error('Unexpected database pool error:', err);
+      logger.error('Unexpected database pool error:', {
+        error: err.message,
+        stack: err.stack,
+      });
     });
 
     this.pool.on('remove', () => {
@@ -46,7 +61,7 @@ class DatabaseService {
   }
 
   // Execute query with automatic connection management
-  async query(text: string, params?: any[]): Promise<any> {
+  async query(text: string, params?: any[]): Promise<QueryResult<any>> {
     const start = Date.now();
     try {
       const result = await this.pool.query(text, params);
@@ -62,7 +77,7 @@ class DatabaseService {
     } catch (error: any) {
       logger.error('Database query failed:', {
         error: error.message,
-        query: text,
+        query: text.substring(0, 100), // Only log first 100 chars
         params: params ? '[REDACTED]' : undefined
       });
       throw error;
@@ -91,7 +106,7 @@ class DatabaseService {
   }
 
   // Check pool health
-  async healthCheck(): Promise<{ healthy: boolean; stats: any }> {
+  async healthCheck(): Promise<HealthCheckResult> {
     try {
       const result = await this.query('SELECT NOW() as current_time');
       return {
@@ -103,10 +118,10 @@ class DatabaseService {
           currentTime: result.rows[0].current_time
         }
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         healthy: false,
-        stats: { error: (error as Error).message }
+        stats: { error: error.message }
       };
     }
   }

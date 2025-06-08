@@ -92,10 +92,11 @@ export const validate = (schemaType: keyof typeof schemas, property: 'body' | 'q
     const schema = schemas[schemaType];
     if (!schema) {
       logger.error('Invalid schema type:', schemaType);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message: 'Internal validation error',
       });
+      return;
     }
 
     const dataToValidate = req[property];
@@ -121,11 +122,12 @@ export const validate = (schemaType: keyof typeof schemas, property: 'body' | 'q
         errors: errorDetails,
       });
 
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: 'Validation failed',
         errors: errorDetails,
       });
+      return;
     }
 
     // Replace request data with validated/sanitized data
@@ -139,10 +141,11 @@ export const validateRefreshToken = (req: Request, res: Response, next: NextFunc
   const { refreshToken } = req.body;
   
   if (!refreshToken || typeof refreshToken !== 'string' || refreshToken.length < 10) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Valid refresh token is required',
     });
+    return;
   }
   
   next();

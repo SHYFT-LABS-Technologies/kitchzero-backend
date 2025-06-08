@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { config } from '../config';
 import logger from '../utils/logger';
 import { JWTUtils } from '../utils/jwt';
+import db from './DatabaseService';
 
 export interface CreateUserData {
   username: string;
@@ -22,19 +23,7 @@ export interface UpdateUserData {
 
 export class UserService {
   static async createUser(userData: CreateUserData, createdBy: string): Promise<any> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
-    try {
-      await client.connect();
-
+    return await db.transaction(async (client) => {
       // Validate password strength
       const passwordValidation = JWTUtils.validatePasswordStrength(userData.password);
       if (!passwordValidation.isValid) {
@@ -117,26 +106,11 @@ export class UserService {
         mustChangePassword: newUser.must_change_password,
         createdAt: newUser.created_at,
       };
-
-    } finally {
-      await client.end();
-    }
+    });
   }
 
   static async updateUser(userId: string, updateData: UpdateUserData, updatedBy: string): Promise<any> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
-    try {
-      await client.connect();
-
+    return await db.transaction(async (client) => {
       // Get current user data
       const currentUser = await client.query(
         'SELECT * FROM users WHERE id = $1',
@@ -230,26 +204,11 @@ export class UserService {
         mustChangePassword: updatedUser.must_change_password,
         updatedAt: updatedUser.updated_at,
       };
-
-    } finally {
-      await client.end();
-    }
+    });
   }
 
   static async deleteUser(userId: string, deletedBy: string): Promise<void> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
-    try {
-      await client.connect();
-
+    return await db.transaction(async (client) => {
       // Get user data before deletion
       const user = await client.query(
         'SELECT username, role FROM users WHERE id = $1',
@@ -277,78 +236,46 @@ export class UserService {
         username: user.rows[0].username,
         role: user.rows[0].role,
       });
-
-    } finally {
-      await client.end();
-    }
+    });
   }
 
   static async getUsersByTenant(tenantId: string, page: number = 1, limit: number = 10): Promise<any> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
+    const offset = (page - 1) * limit;
 
-    try {
-      await client.connect();
+    // Get users count
+    const countResult = await db.query(
+      'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1 AND deleted_at IS NULL',
+      [tenantId]
+    );
 
-      const offset = (page - 1) * limit;
+    // Get users with pagination
+    const usersResult = await db.query(`
+      SELECT u.id, u.username, u.email, u.role, u.tenant_id, u.branch_id, u.is_active, 
+             u.must_change_password, u.last_login_at, u.created_at,
+             b.name as branch_name
+      FROM users u
+      LEFT JOIN branches b ON u.branch_id = b.id
+      WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
+      ORDER BY u.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [tenantId, limit, offset]);
 
-      // Get users count
-      const countResult = await client.query(
-        'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1 AND deleted_at IS NULL',
-        [tenantId]
-      );
+    const total = parseInt(countResult.rows[0].count);
+    const totalPages = Math.ceil(total / limit);
 
-      // Get users with pagination
-      const usersResult = await client.query(`
-        SELECT u.id, u.username, u.email, u.role, u.tenant_id, u.branch_id, u.is_active, 
-               u.must_change_password, u.last_login_at, u.created_at,
-               b.name as branch_name
-        FROM users u
-        LEFT JOIN branches b ON u.branch_id = b.id
-        WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
-        ORDER BY u.created_at DESC
-        LIMIT $2 OFFSET $3
-      `, [tenantId, limit, offset]);
-
-      const total = parseInt(countResult.rows[0].count);
-      const totalPages = Math.ceil(total / limit);
-
-      return {
-        users: usersResult.rows,
-        pagination: {
-          current: page,
-          pages: totalPages,
-          total,
-          limit,
-        },
-      };
-
-    } finally {
-      await client.end();
-    }
+    return {
+      users: usersResult.rows,
+      pagination: {
+        current: page,
+        pages: totalPages,
+        total,
+        limit,
+      },
+    };
   }
 
   static async resetUserPassword(userId: string, resetBy: string): Promise<string> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
-    try {
-      await client.connect();
-
+    return await db.transaction(async (client) => {
       // Generate temporary password
       const tempPassword = JWTUtils.generateSecureToken(8);
       const hashedPassword = await bcrypt.hash(tempPassword, config.security.bcryptRounds);
@@ -370,9 +297,6 @@ export class UserService {
       });
 
       return tempPassword;
-
-    } finally {
-      await client.end();
-    }
+    });
   }
 }

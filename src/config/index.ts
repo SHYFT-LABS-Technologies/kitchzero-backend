@@ -64,15 +64,24 @@ const validateConfig = (): void => {
 
   const missing = required.filter(key => !process.env[key]);
   if (missing.length > 0) {
+    // In test environment, provide more helpful error message
+    if (process.env.NODE_ENV === 'test') {
+      console.error('❌ Missing test environment variables:', missing.join(', '));
+      console.error('💡 Make sure .env.test file exists with all required variables');
+    }
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
-  // Validate JWT secrets strength
+  // Validate JWT secrets strength (warn only in test)
   if ((process.env.JWT_ACCESS_SECRET || '').length < 32) {
-    console.warn('Warning: JWT_ACCESS_SECRET should be at least 32 characters long for security');
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('Warning: JWT_ACCESS_SECRET should be at least 32 characters long for security');
+    }
   }
   if ((process.env.JWT_REFRESH_SECRET || '').length < 32) {
-    console.warn('Warning: JWT_REFRESH_SECRET should be at least 32 characters long for security');
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('Warning: JWT_REFRESH_SECRET should be at least 32 characters long for security');
+    }
   }
 };
 

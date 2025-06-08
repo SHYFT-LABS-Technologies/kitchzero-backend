@@ -1,5 +1,6 @@
 import { config } from '../config';
 import logger from '../utils/logger';
+import db from './DatabaseService';
 
 export interface CreateTenantData {
   name: string;
@@ -18,19 +19,7 @@ export interface UpdateTenantData {
 
 export class TenantService {
   static async createTenant(tenantData: CreateTenantData, createdBy: string): Promise<any> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
-
-    try {
-      await client.connect();
-
+    return await db.transaction(async (client) => {
       // Check if slug already exists
       const existingTenant = await client.query(
         'SELECT id FROM tenants WHERE slug = $1',
@@ -63,10 +52,7 @@ export class TenantService {
       });
 
       return newTenant;
-
-    } finally {
-      await client.end();
-    }
+    });
   }
 
   static async updateTenant(tenantId: string, updateData: UpdateTenantData, updatedBy: string): Promise<any> {
@@ -161,92 +147,58 @@ export class TenantService {
   }
 
   static async getTenants(page: number = 1, limit: number = 10): Promise<any> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
+    const offset = (page - 1) * limit;
 
-    try {
-      await client.connect();
+    // Get tenants count
+    const countResult = await db.query(
+      'SELECT COUNT(*) as count FROM tenants WHERE deleted_at IS NULL'
+    );
 
-      const offset = (page - 1) * limit;
+    // Get tenants with stats
+    const tenantsResult = await db.query(`
+      SELECT t.*,
+             COUNT(u.id) as user_count,
+             COUNT(b.id) as branch_count
+      FROM tenants t
+      LEFT JOIN users u ON t.id = u.tenant_id AND u.deleted_at IS NULL
+      LEFT JOIN branches b ON t.id = b.tenant_id AND b.deleted_at IS NULL
+      WHERE t.deleted_at IS NULL
+      GROUP BY t.id
+      ORDER BY t.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
 
-      // Get tenants count
-      const countResult = await client.query(
-        'SELECT COUNT(*) as count FROM tenants WHERE deleted_at IS NULL'
-      );
+    const total = parseInt(countResult.rows[0].count);
+    const totalPages = Math.ceil(total / limit);
 
-      // Get tenants with stats
-      const tenantsResult = await client.query(`
-        SELECT t.*,
-               COUNT(u.id) as user_count,
-               COUNT(b.id) as branch_count
-        FROM tenants t
-        LEFT JOIN users u ON t.id = u.tenant_id AND u.deleted_at IS NULL
-        LEFT JOIN branches b ON t.id = b.tenant_id AND b.deleted_at IS NULL
-        WHERE t.deleted_at IS NULL
-        GROUP BY t.id
-        ORDER BY t.created_at DESC
-        LIMIT $1 OFFSET $2
-      `, [limit, offset]);
-
-      const total = parseInt(countResult.rows[0].count);
-      const totalPages = Math.ceil(total / limit);
-
-      return {
-        tenants: tenantsResult.rows,
-        pagination: {
-          current: page,
-          pages: totalPages,
-          total,
-          limit,
-        },
-      };
-
-    } finally {
-      await client.end();
-    }
+    return {
+      tenants: tenantsResult.rows,
+      pagination: {
+        current: page,
+        pages: totalPages,
+        total,
+        limit,
+      },
+    };
   }
 
   static async getTenantById(tenantId: string): Promise<any> {
-    const { Client } = require('pg');
-    
-    const client = new Client({
-      host: config.database.host,
-      port: config.database.port,
-      user: config.database.username,
-      password: config.database.password,
-      database: config.database.name,
-    });
+    const result = await db.query(`
+      SELECT t.*,
+             COUNT(u.id) as user_count,
+             COUNT(b.id) as branch_count
+      FROM tenants t
+      LEFT JOIN users u ON t.id = u.tenant_id AND u.deleted_at IS NULL
+      LEFT JOIN branches b ON t.id = b.tenant_id AND b.deleted_at IS NULL
+      WHERE t.id = $1 AND t.deleted_at IS NULL
+      GROUP BY t.id
+    `, [tenantId]);
 
-    try {
-      await client.connect();
-
-      const result = await client.query(`
-        SELECT t.*,
-               COUNT(u.id) as user_count,
-               COUNT(b.id) as branch_count
-        FROM tenants t
-        LEFT JOIN users u ON t.id = u.tenant_id AND u.deleted_at IS NULL
-        LEFT JOIN branches b ON t.id = b.tenant_id AND b.deleted_at IS NULL
-        WHERE t.id = $1 AND t.deleted_at IS NULL
-        GROUP BY t.id
-      `, [tenantId]);
-
-      if (result.rows.length === 0) {
-        throw new Error('Tenant not found');
-      }
-
-      return result.rows[0];
-
-    } finally {
-      await client.end();
+    if (result.rows.length === 0) {
+      throw new Error('Tenant not found');
     }
+
+    return result.rows[0];
   }
 
   static async deleteTenant(tenantId: string, deletedBy: string): Promise<void> {
