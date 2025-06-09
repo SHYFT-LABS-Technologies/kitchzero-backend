@@ -39,23 +39,23 @@ app.use(generalRateLimit);
 // Request logging middleware using new logger
 app.use((req, res, next) => {
   const startTime = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - startTime;
     logger.http(req, res, duration);
   });
-  
+
   next();
 });
 
 // Enhanced health check endpoint
 app.get('/health', asyncHandler(async (req: express.Request, res: express.Response) => {
   const startTime = Date.now();
-  
+
   try {
     // Check database health
     const dbHealth = await db.healthCheck();
-    
+
     // Check basic system health
     const healthStatus = {
       status: dbHealth.healthy ? 'OK' : 'UNHEALTHY',
@@ -104,10 +104,10 @@ app.get('/health/database', asyncHandler(async (req: express.Request, res: expre
 app.get('/api/v1/db-test', asyncHandler(async (req: express.Request, res: express.Response) => {
   try {
     const startTime = Date.now();
-    
+
     // Test basic connection
     const timeResult = await db.query('SELECT NOW() as current_time');
-    
+
     // Test user count
     let userCount = 0;
     try {
@@ -116,7 +116,7 @@ app.get('/api/v1/db-test', asyncHandler(async (req: express.Request, res: expres
     } catch (e) {
       logger.warn('Users table not found, might need to run db:setup');
     }
-    
+
     // Test tables exist
     const tablesResult = await db.query(`
       SELECT table_name 
@@ -146,7 +146,7 @@ app.get('/api/v1/db-test', asyncHandler(async (req: express.Request, res: expres
 }));
 
 // JWT Login endpoint with validation
-app.post('/api/v1/auth/login', 
+app.post('/api/v1/auth/login',
   loginRateLimit,
   validate('login'),
   asyncHandler(async (req: express.Request, res: express.Response) => {
@@ -154,9 +154,9 @@ app.post('/api/v1/auth/login',
 
     try {
       const result = await AuthService.login(
-        username, 
-        password, 
-        req.ip || 'unknown', 
+        username,
+        password,
+        req.ip || 'unknown',
         req.get('User-Agent') || ''
       );
 
@@ -176,7 +176,7 @@ app.post('/api/v1/auth/login',
 );
 
 // Token refresh endpoint with validation
-app.post('/api/v1/auth/refresh', 
+app.post('/api/v1/auth/refresh',
   validateRefreshToken,
   asyncHandler(async (req: express.Request, res: express.Response) => {
     const { refreshToken } = req.body;
@@ -200,7 +200,7 @@ app.post('/api/v1/auth/refresh',
 );
 
 // Change password with validation
-app.post('/api/v1/auth/change-password', 
+app.post('/api/v1/auth/change-password',
   AuthMiddleware.authenticate,
   validate('changePassword'),
   asyncHandler(async (req: any, res: express.Response): Promise<void> => {
@@ -224,9 +224,99 @@ app.post('/api/v1/auth/change-password',
   })
 );
 
+app.post('/api/v1/auth/change-credentials', 
+  AuthMiddleware.authenticate,
+  validate('changeCredentials'),
+  asyncHandler(async (req: any, res: express.Response): Promise<void> => {
+    const { currentPassword, newUsername, newPassword } = req.body;
+
+    try {
+      console.log('🔄 Before credential change - User ID:', req.user.id);
+      
+      await AuthService.changeCredentials(req.user.id, currentPassword, newUsername, newPassword);
+      
+      // Get the updated user data
+      const updatedUserResult = await db.query(
+        'SELECT id, username, email, role, tenant_id, branch_id, is_active, must_change_password FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      
+      const updatedUser = updatedUserResult.rows[0];
+      console.log('✅ After credential change:', updatedUser);
+
+      res.json({
+        success: true,
+        message: 'Credentials changed successfully.',
+        data: {
+          user: {
+            id: updatedUser.id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            role: updatedUser.role,
+            tenantId: updatedUser.tenant_id,
+            branchId: updatedUser.branch_id,
+            isActive: updatedUser.is_active,
+            mustChangePassword: updatedUser.must_change_password,
+          }
+        }
+      });
+      return;
+    } catch (error: any) {
+      console.error('❌ Credential change error:', error.message);
+      res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
+  })
+);
+
+app.get('/api/v1/auth/me',
+  AuthMiddleware.authenticate,
+  asyncHandler(async (req: any, res: express.Response) => {
+    try {
+      const result = await db.query(
+        'SELECT id, username, email, role, tenant_id, branch_id, is_active, must_change_password FROM users WHERE id = $1',
+        [req.user.id]
+      );
+
+      if (result.rows.length === 0) {
+        res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+        return;
+      }
+
+      const user = result.rows[0];
+      res.json({
+        success: true,
+        data: {
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            tenantId: user.tenant_id,
+            branchId: user.branch_id,
+            isActive: user.is_active,
+            mustChangePassword: user.must_change_password,
+          }
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get user data',
+      });
+    }
+  })
+);
+
 // Create tenant with validation
-app.post('/api/v1/admin/tenants', 
-  AuthMiddleware.authenticate, 
+app.post('/api/v1/admin/tenants',
+  AuthMiddleware.authenticate,
   AuthMiddleware.authorize(['super_admin']),
   validate('createTenant'),
   asyncHandler(async (req: any, res: express.Response) => {
@@ -256,7 +346,7 @@ app.post('/api/v1/admin/tenants',
 );
 
 // Create user with validation
-app.post('/api/v1/admin/users', 
+app.post('/api/v1/admin/users',
   AuthMiddleware.authenticate,
   AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
   validate('createUser'),
@@ -301,14 +391,14 @@ app.post('/api/v1/admin/users',
 );
 
 // Get users with pagination validation
-app.get('/api/v1/admin/users', 
-  AuthMiddleware.authenticate, 
+app.get('/api/v1/admin/users',
+  AuthMiddleware.authenticate,
   AuthMiddleware.authorize(['super_admin']),
   validate('pagination', 'query'),
   asyncHandler(async (req: express.Request, res: express.Response) => {
     try {
       const { page, limit } = req.query as any;
-      
+
       const result = await db.query(`
         SELECT id, username, email, role, is_active, must_change_password, 
                created_at, last_login_at, tenant_id, branch_id
@@ -345,11 +435,11 @@ app.get('/api/v1/admin/users',
 );
 
 // Logout endpoint
-app.post('/api/v1/auth/logout', 
-  AuthMiddleware.authenticate, 
+app.post('/api/v1/auth/logout',
+  AuthMiddleware.authenticate,
   asyncHandler(async (req: any, res: express.Response) => {
     const { refreshToken } = req.body;
-    
+
     if (refreshToken) {
       try {
         // Revoke the refresh token
@@ -357,7 +447,7 @@ app.post('/api/v1/auth/logout',
           'UPDATE refresh_tokens SET is_revoked = true WHERE token = $1 AND user_id = $2',
           [refreshToken, req.user.id]
         );
-        
+
         logger.audit('user_logout', req.user.id, {
           ip: req.ip,
           userAgent: req.get('User-Agent'),
@@ -379,6 +469,29 @@ app.post('/api/v1/auth/logout',
   })
 );
 
+app.get('/api/v1/debug/user/:username',
+  asyncHandler(async (req: express.Request, res: express.Response) => {
+    const { username } = req.params;
+    
+    try {
+      const result = await db.query(
+        'SELECT id, username, must_change_password, created_at, updated_at FROM users WHERE username = $1',
+        [username]
+      );
+
+      res.json({
+        success: true,
+        data: result.rows[0] || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  })
+);
+
 // 404 handler
 app.use('*', notFoundHandler);
 
@@ -388,7 +501,7 @@ app.use(errorHandler);
 // Graceful shutdown with database cleanup
 const gracefulShutdown = async (signal: string) => {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
-  
+
   server.close(async () => {
     try {
       await db.close();
@@ -401,7 +514,7 @@ const gracefulShutdown = async (signal: string) => {
         signal,
       });
     }
-    
+
     logger.info('Server closed. Process terminated.');
     process.exit(0);
   });

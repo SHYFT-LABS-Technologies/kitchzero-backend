@@ -21,6 +21,18 @@ export const schemas = {
       }),
   }),
 
+  changeCredentials: Joi.object({
+    currentPassword: Joi.string().required(),
+    newUsername: Joi.string().alphanum().min(3).max(50).required(),
+    newPassword: Joi.string()
+      .min(12)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/)
+      .required()
+      .messages({
+        'string.pattern.base': 'Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character'
+      }),
+  }),
+
   // User schemas
   createUser: Joi.object({
     username: Joi.string().alphanum().min(3).max(50).required(),
@@ -139,7 +151,7 @@ export const validate = (schemaType: keyof typeof schemas, property: 'body' | 'q
 // Custom validation for complex scenarios
 export const validateRefreshToken = (req: Request, res: Response, next: NextFunction): void => {
   const { refreshToken } = req.body;
-  
+
   if (!refreshToken || typeof refreshToken !== 'string' || refreshToken.length < 10) {
     res.status(400).json({
       success: false,
@@ -147,6 +159,6 @@ export const validateRefreshToken = (req: Request, res: Response, next: NextFunc
     });
     return;
   }
-  
+
   next();
 };

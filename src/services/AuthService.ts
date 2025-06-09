@@ -111,7 +111,7 @@ export class AuthService {
       // Store refresh token in database
       await db.query(
         'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-        [user.id, refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)] // 7 days
+        [user.id, refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)]
       );
 
       logger.audit('user_login', user.id, {
@@ -127,11 +127,11 @@ export class AuthService {
           role: user.role,
           tenantId: user.tenant_id,
           branchId: user.branch_id,
-          mustChangePassword: user.must_change_password,
+          mustChangePassword: user.must_change_password, // Use ONLY the database value
         },
         accessToken,
         refreshToken,
-        expiresIn: 15 * 60, // 15 minutes in seconds
+        expiresIn: 15 * 60,
       };
     } catch (error: any) {
       logger.error('Authentication error:', {
@@ -201,6 +201,71 @@ export class AuthService {
     }
   }
 
+  static async changeCredentials(userId: string, currentPassword: string, newUsername: string, newPassword: string): Promise<void> {
+    return await db.transaction(async (client) => {
+      // Get user
+      const result = await client.query(
+        'SELECT id, username, password, must_change_password FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+
+      const user = result.rows[0];
+      console.log('🔍 Before update - User data:', {
+        id: user.id,
+        username: user.username,
+        must_change_password: user.must_change_password
+      });
+
+      // Validate current password
+      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isCurrentPasswordValid) {
+        throw new Error('Current password is incorrect');
+      }
+
+      // Check if new username already exists (excluding current user)
+      const existingUser = await client.query(
+        'SELECT id FROM users WHERE username = $1 AND id != $2',
+        [newUsername, userId]
+      );
+
+      if (existingUser.rows.length > 0) {
+        throw new Error('Username already exists');
+      }
+
+      // Validate new password strength
+      const passwordValidation = JWTUtils.validatePasswordStrength(newPassword);
+      if (!passwordValidation.isValid) {
+        throw new Error(`Password validation failed: ${passwordValidation.errors.join(', ')}`);
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, config.security.bcryptRounds);
+
+      // Update username, password, and EXPLICITLY set must_change_password to false
+      const updateResult = await client.query(
+        'UPDATE users SET username = $1, password = $2, must_change_password = false, updated_at = NOW() WHERE id = $3 RETURNING username, must_change_password',
+        [newUsername, hashedPassword, userId]
+      );
+
+      console.log('✅ After update - User data:', updateResult.rows[0]);
+
+      // Revoke all existing refresh tokens (force re-login)
+      await client.query(
+        'UPDATE refresh_tokens SET is_revoked = true WHERE user_id = $1',
+        [userId]
+      );
+
+      logger.audit('credentials_changed', userId, {
+        oldUsername: user.username,
+        newUsername: newUsername,
+      });
+    });
+  }
+
   static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     return await db.transaction(async (client) => {
       // Get user
@@ -247,4 +312,5 @@ export class AuthService {
       logger.audit('password_change', userId);
     });
   }
+
 }
