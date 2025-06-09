@@ -492,6 +492,289 @@ try {
     })
   );
 
+  // Tenant Management endpoints (for super admin)
+  app.get('/api/v1/admin/tenants',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin']),
+    validate('pagination', 'query'),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const { page, limit } = req.query;
+        const result = await TenantService.getTenants(page, limit, req.user.role);
+
+        res.json({
+          success: true,
+          data: result,
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.post('/api/v1/admin/tenants',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const result = await TenantService.createTenant(req.body, req.user.id);
+
+        res.status(201).json({
+          success: true,
+          message: 'Tenant created successfully',
+          data: result,
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.get('/api/v1/admin/tenants/:tenantId',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const result = await TenantService.getTenantById(req.params.tenantId, req.user.id, req.user.role);
+
+        res.json({
+          success: true,
+          data: { tenant: result },
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  // Tenant self-management endpoints (for tenant admins)
+  app.get('/api/v1/tenant/info',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['tenant_admin', 'branch_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        if (!req.user.tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: 'No tenant associated with user',
+          });
+        }
+
+        const result = await TenantService.getTenantById(req.user.tenantId, req.user.id, req.user.role);
+
+        res.json({
+          success: true,
+          data: { tenant: result },
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.put('/api/v1/tenant/info',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['tenant_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const result = await TenantService.updateTenant(
+          req.user.tenantId,
+          req.body,
+          req.user.id,
+          req.user.role,
+          req.user.tenantId
+        );
+
+        res.json({
+          success: true,
+          message: 'Tenant information updated successfully',
+          data: { tenant: result },
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  // Tenant dashboard stats
+  app.get('/api/v1/tenant/dashboard',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['tenant_admin', 'branch_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const stats = await TenantService.getTenantDashboardStats(req.user.tenantId, req.user.id, req.user.role);
+
+        res.json({
+          success: true,
+          data: stats,
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  // User Management endpoints (tenant-scoped)
+  app.get('/api/v1/tenant/users',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+    validate('pagination', 'query'),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const { page, limit } = req.query;
+        const tenantId = req.user.role === 'super_admin' ? req.query.tenantId : req.user.tenantId;
+
+        if (!tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: 'Tenant ID is required',
+          });
+        }
+
+        const result = await UserService.getUsersByTenant(
+          tenantId,
+          page,
+          limit,
+          req.user.id,
+          req.user.role,
+          req.user.tenantId
+        );
+
+        res.json({
+          success: true,
+          data: result,
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.post('/api/v1/tenant/users',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const result = await UserService.createUser(
+          req.body,
+          req.user.id,
+          req.user.role,
+          req.user.tenantId
+        );
+
+        res.status(201).json({
+          success: true,
+          message: 'User created successfully',
+          data: { user: result },
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.put('/api/v1/tenant/users/:userId',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const result = await UserService.updateUser(
+          req.params.userId,
+          req.body,
+          req.user.id,
+          req.user.role,
+          req.user.tenantId
+        );
+
+        res.json({
+          success: true,
+          message: 'User updated successfully',
+          data: { user: result },
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.delete('/api/v1/tenant/users/:userId',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        await UserService.deleteUser(
+          req.params.userId,
+          req.user.id,
+          req.user.role,
+          req.user.tenantId
+        );
+
+        res.json({
+          success: true,
+          message: 'User deleted successfully',
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
+  app.post('/api/v1/tenant/users/:userId/reset-password',
+    AuthMiddleware.authenticate,
+    AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+    asyncHandler(async (req: any, res: express.Response) => {
+      try {
+        const tempPassword = await UserService.resetUserPassword(
+          req.params.userId,
+          req.user.id,
+          req.user.role,
+          req.user.tenantId
+        );
+
+        res.json({
+          success: true,
+          message: 'Password reset successfully',
+          data: { temporaryPassword: tempPassword },
+        });
+      } catch (error: any) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    })
+  );
+
   // 404 handler
   app.use('*', notFoundHandler);
 
