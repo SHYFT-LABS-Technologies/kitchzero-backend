@@ -65,10 +65,36 @@ try {
   // Security middleware
   app.use(helmet());
   app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:3001', 'http://localhost:3000'],
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:3001',
+      'http://localhost:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:3000'
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-CSRF-Token',
+      'X-Requested-With',
+      'X-Request-ID',
+      'X-Request-Timestamp',
+      'X-CSP-Nonce',
+      'Accept',
+      'Origin',
+      'User-Agent',
+      'Cache-Control'
+    ],
+    exposedHeaders: [
+      'X-Request-ID',
+      'X-Rate-Limit-Remaining',
+      'X-Rate-Limit-Reset'
+    ],
+    optionsSuccessStatus: 200,
+    preflightContinue: false
   }));
 
   // Basic middleware
@@ -252,7 +278,7 @@ try {
     })
   );
 
-  app.post('/api/v1/auth/change-credentials', 
+  app.post('/api/v1/auth/change-credentials',
     AuthMiddleware.authenticate,
     validate('changeCredentials'),
     asyncHandler(async (req: any, res: express.Response): Promise<void> => {
@@ -260,12 +286,12 @@ try {
 
       try {
         await AuthService.changeCredentials(req.user.id, currentPassword, newUsername, newPassword);
-        
+
         const updatedUserResult = await db.query(
           'SELECT id, username, email, role, tenant_id, branch_id, is_active, must_change_password FROM users WHERE id = $1',
           [req.user.id]
         );
-        
+
         const updatedUser = updatedUserResult.rows[0];
 
         res.json({
@@ -377,7 +403,7 @@ try {
       console.log('✅ Waste management routes loaded');
     } catch (error) {
       console.log('⚠️  Waste management routes not loaded, will create placeholder');
-      
+
       // Create placeholder routes
       app.get('/api/v1/waste-management/status', (req, res) => {
         res.json({
@@ -446,7 +472,7 @@ try {
   app.get('/api/v1/debug/user/:username',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { username } = req.params;
-      
+
       try {
         const result = await db.query(
           'SELECT id, username, must_change_password, created_at, updated_at FROM users WHERE username = $1',
