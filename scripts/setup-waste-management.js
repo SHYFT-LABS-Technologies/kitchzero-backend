@@ -192,36 +192,7 @@ async function setupWasteManagement() {
       )
     `);
 
-    // 11. Menu items (for tracking waste in prepared foods)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS menu_items (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-        branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        category VARCHAR(100),
-        selling_price DECIMAL(15,2),
-        cost_price DECIMAL(15,2),
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP
-      )
-    `);
-
-    // 12. Menu item ingredients (recipes)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS menu_item_ingredients (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        menu_item_id UUID REFERENCES menu_items(id) ON DELETE CASCADE,
-        product_id UUID REFERENCES products(id) ON DELETE CASCADE,
-        quantity_required DECIMAL(15,3) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Insert default units
+    // Insert ONLY essential default units (no product-specific data)
     const defaultUnits = [
       ['Kilogram', 'kg', 'weight', null, 1.0],
       ['Gram', 'g', 'weight', 'kg', 0.001],
@@ -243,14 +214,15 @@ async function setupWasteManagement() {
       `, [name, symbol, type, baseUnit, factor]);
     }
 
-    // Insert default system settings
+    // Insert only basic system settings (no pre-loaded business data)
     await client.query(`
       INSERT INTO system_settings (key, value, description)
       VALUES 
         ('default_currency', '"LKR"', 'Default currency for the system'),
         ('supported_currencies', '["LKR", "USD", "EUR"]', 'List of supported currencies'),
         ('waste_alert_threshold', '5.0', 'Percentage threshold for waste alerts'),
-        ('inventory_low_stock_threshold', '10.0', 'Percentage threshold for low stock alerts')
+        ('inventory_low_stock_threshold', '10.0', 'Percentage threshold for low stock alerts'),
+        ('fifo_enforcement', 'true', 'Enforce FIFO for inventory management')
       ON CONFLICT (key) DO NOTHING
     `);
 
@@ -270,7 +242,7 @@ async function setupWasteManagement() {
       await client.query(indexQuery);
     }
 
-    console.log('✅ Waste management tables created successfully!');
+    console.log('✅ Waste management tables created successfully (no pre-loaded data)!');
 
     await client.end();
   } catch (error) {

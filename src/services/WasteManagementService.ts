@@ -79,7 +79,7 @@ export class WasteManagementService {
   static async createInventoryPurchase(purchaseData: InventoryPurchaseData, createdBy: string): Promise<any> {
     return await db.transaction(async (client) => {
       // Calculate total amount
-      const totalAmount = purchaseData.items.reduce((sum, item) => 
+      const totalAmount = purchaseData.items.reduce((sum, item) =>
         sum + (item.quantity * item.unitCost), 0);
 
       // Create purchase record
@@ -391,5 +391,197 @@ export class WasteManagementService {
     `, [tenantId]);
 
     return result.rows;
+  }
+
+  // Category Management
+  static async createCategory(categoryData: any, createdBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      const result = await client.query(`
+      INSERT INTO categories (tenant_id, name, description, is_active)
+      VALUES ($1, $2, $3, true)
+      RETURNING *
+    `, [categoryData.tenantId, categoryData.name, categoryData.description]);
+
+      const category = result.rows[0];
+
+      logger.audit('category_created', createdBy, {
+        categoryId: category.id,
+        tenantId: category.tenant_id,
+        name: category.name,
+      });
+
+      return category;
+    });
+  }
+
+  static async updateCategory(categoryId: string, updateData: any, updatedBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      const result = await client.query(`
+      UPDATE categories 
+      SET name = $1, description = $2, updated_at = NOW()
+      WHERE id = $3
+      RETURNING *
+    `, [updateData.name, updateData.description, categoryId]);
+
+      const category = result.rows[0];
+
+      logger.audit('category_updated', updatedBy, {
+        categoryId: category.id,
+        name: category.name,
+      });
+
+      return category;
+    });
+  }
+
+  static async deleteCategory(categoryId: string, deletedBy: string): Promise<void> {
+    return await db.transaction(async (client) => {
+      await client.query(
+        'UPDATE categories SET deleted_at = NOW(), is_active = false WHERE id = $1',
+        [categoryId]
+      );
+
+      logger.audit('category_deleted', deletedBy, { categoryId });
+    });
+  }
+
+  // Supplier Management
+  static async createSupplier(supplierData: any, createdBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      const result = await client.query(`
+      INSERT INTO suppliers (tenant_id, name, contact_person, phone, email, address, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, true)
+      RETURNING *
+    `, [
+        supplierData.tenantId,
+        supplierData.name,
+        supplierData.contactPerson,
+        supplierData.phone,
+        supplierData.email,
+        supplierData.address
+      ]);
+
+      const supplier = result.rows[0];
+
+      logger.audit('supplier_created', createdBy, {
+        supplierId: supplier.id,
+        name: supplier.name,
+      });
+
+      return supplier;
+    });
+  }
+
+  static async updateSupplier(supplierId: string, updateData: any, updatedBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      const result = await client.query(`
+      UPDATE suppliers 
+      SET name = $1, contact_person = $2, phone = $3, email = $4, address = $5, updated_at = NOW()
+      WHERE id = $6
+      RETURNING *
+    `, [
+        updateData.name,
+        updateData.contactPerson,
+        updateData.phone,
+        updateData.email,
+        updateData.address,
+        supplierId
+      ]);
+
+      const supplier = result.rows[0];
+
+      logger.audit('supplier_updated', updatedBy, {
+        supplierId: supplier.id,
+        name: supplier.name,
+      });
+
+      return supplier;
+    });
+  }
+
+  static async deleteSupplier(supplierId: string, deletedBy: string): Promise<void> {
+    return await db.transaction(async (client) => {
+      await client.query(
+        'UPDATE suppliers SET deleted_at = NOW(), is_active = false WHERE id = $1',
+        [supplierId]
+      );
+
+      logger.audit('supplier_deleted', deletedBy, { supplierId });
+    });
+  }
+
+  // Waste Category Management
+  static async createWasteCategory(wasteCategoryData: any, createdBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      const result = await client.query(`
+      INSERT INTO waste_categories (tenant_id, name, description, color, is_active)
+      VALUES ($1, $2, $3, $4, true)
+      RETURNING *
+    `, [
+        wasteCategoryData.tenantId,
+        wasteCategoryData.name,
+        wasteCategoryData.description,
+        wasteCategoryData.color || '#FF6B6B'
+      ]);
+
+      const wasteCategory = result.rows[0];
+
+      logger.audit('waste_category_created', createdBy, {
+        wasteCategoryId: wasteCategory.id,
+        name: wasteCategory.name,
+      });
+
+      return wasteCategory;
+    });
+  }
+
+  static async updateWasteCategory(wasteCategoryId: string, updateData: any, updatedBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      const result = await client.query(`
+     UPDATE waste_categories 
+     SET name = $1, description = $2, color = $3, updated_at = NOW()
+     WHERE id = $4
+     RETURNING *
+   `, [updateData.name, updateData.description, updateData.color, wasteCategoryId]);
+
+      const wasteCategory = result.rows[0];
+
+      logger.audit('waste_category_updated', updatedBy, {
+        wasteCategoryId: wasteCategory.id,
+        name: wasteCategory.name,
+      });
+
+      return wasteCategory;
+    });
+  }
+
+  static async deleteWasteCategory(wasteCategoryId: string, deletedBy: string): Promise<void> {
+    return await db.transaction(async (client) => {
+      await client.query(
+        'UPDATE waste_categories SET deleted_at = NOW(), is_active = false WHERE id = $1',
+        [wasteCategoryId]
+      );
+
+      logger.audit('waste_category_deleted', deletedBy, { wasteCategoryId });
+    });
+  }
+
+  // Update system settings
+  static async updateSystemSettings(settings: any, updatedBy: string): Promise<any> {
+    return await db.transaction(async (client) => {
+      for (const [key, value] of Object.entries(settings)) {
+        await client.query(`
+       INSERT INTO system_settings (key, value, description)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (key) DO UPDATE SET 
+         value = EXCLUDED.value,
+         updated_at = NOW()
+     `, [key, JSON.stringify(value), `Updated by ${updatedBy}`]);
+      }
+
+      logger.audit('system_settings_updated', updatedBy, { settings });
+
+      return await this.getSystemSettings();
+    });
   }
 }

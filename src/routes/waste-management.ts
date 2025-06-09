@@ -260,4 +260,179 @@ router.get('/suppliers',
   })
 );
 
+router.post('/categories',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const categoryData = req.body;
+
+    if (req.user.role === 'tenant_admin') {
+      categoryData.tenantId = req.user.tenantId;
+    }
+
+    const category = await WasteManagementService.createCategory(categoryData, req.user.id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Category created successfully',
+      data: { category },
+    });
+  })
+);
+
+router.put('/categories/:id',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const category = await WasteManagementService.updateCategory(id, updateData, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Category updated successfully',
+      data: { category },
+    });
+  })
+);
+
+router.delete('/categories/:id',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const { id } = req.params;
+
+    await WasteManagementService.deleteCategory(id, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Category deleted successfully',
+    });
+  })
+);
+
+// Supplier CRUD
+router.post('/suppliers',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const supplierData = req.body;
+
+    if (req.user.role === 'tenant_admin') {
+      supplierData.tenantId = req.user.tenantId;
+    }
+
+    const supplier = await WasteManagementService.createSupplier(supplierData, req.user.id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Supplier created successfully',
+      data: { supplier },
+    });
+  })
+);
+
+router.put('/suppliers/:id',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const supplier = await WasteManagementService.updateSupplier(id, updateData, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Supplier updated successfully',
+      data: { supplier },
+    });
+  })
+);
+
+router.delete('/suppliers/:id',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const { id } = req.params;
+
+    await WasteManagementService.deleteSupplier(id, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Supplier deleted successfully',
+    });
+  })
+);
+
+// Waste Category CRUD
+router.post('/waste-categories',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const wasteCategoryData = req.body;
+
+    if (req.user.role === 'tenant_admin') {
+      wasteCategoryData.tenantId = req.user.tenantId;
+    }
+
+    const wasteCategory = await WasteManagementService.createWasteCategory(wasteCategoryData, req.user.id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Waste category created successfully',
+      data: { wasteCategory },
+    });
+  })
+);
+
+router.put('/waste-categories/:id',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const wasteCategory = await WasteManagementService.updateWasteCategory(id, updateData, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Waste category updated successfully',
+      data: { wasteCategory },
+    });
+  })
+);
+
+router.delete('/waste-categories/:id',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin', 'tenant_admin']),
+  asyncHandler(async (req: any, res) => {
+    const { id } = req.params;
+
+    await WasteManagementService.deleteWasteCategory(id, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Waste category deleted successfully',
+    });
+  })
+);
+
+// System Settings
+router.put('/settings',
+  AuthMiddleware.authenticate,
+  AuthMiddleware.authorize(['super_admin']),
+  asyncHandler(async (req: any, res) => {
+    const settings = req.body;
+
+    const updatedSettings = await WasteManagementService.updateSystemSettings(settings, req.user.id);
+
+    res.json({
+      success: true,
+      message: 'System settings updated successfully',
+      data: updatedSettings,
+    });
+  })
+);
+
 export default router;
