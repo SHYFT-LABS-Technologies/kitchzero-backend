@@ -83,6 +83,49 @@ export const schemas = {
     settings: Joi.object().optional(),
   }),
 
+  createProduct: Joi.object({
+    tenantId: Joi.string().uuid().optional(),
+    categoryId: Joi.string().uuid().optional(),
+    name: Joi.string().min(2).max(255).required(),
+    description: Joi.string().max(500).optional(),
+    unitId: Joi.string().uuid().required(),
+    perishable: Joi.boolean().required(),
+    shelfLifeDays: Joi.number().integer().min(1).max(365).optional(),
+    minimumStock: Joi.number().min(0).default(0),
+    averageCostPerUnit: Joi.number().min(0).default(0),
+  }),
+
+  createInventoryPurchase: Joi.object({
+    tenantId: Joi.string().uuid().optional(),
+    branchId: Joi.string().uuid().required(),
+    supplierId: Joi.string().uuid().optional(),
+    purchaseDate: Joi.date().iso().required(),
+    invoiceNumber: Joi.string().max(100).optional(),
+    items: Joi.array().items(
+      Joi.object({
+        productId: Joi.string().uuid().required(),
+        quantity: Joi.number().min(0.001).required(),
+        unitCost: Joi.number().min(0).required(),
+        expiryDate: Joi.date().iso().optional(),
+        batchNumber: Joi.string().max(100).optional(),
+      })
+    ).min(1).required(),
+  }),
+
+  createWasteRecord: Joi.object({
+    tenantId: Joi.string().uuid().optional(),
+    branchId: Joi.string().uuid().required(),
+    productId: Joi.string().uuid().required(),
+    wasteCategoryId: Joi.string().uuid().required(),
+    stockId: Joi.string().uuid().optional(),
+    wasteDate: Joi.date().iso().required(),
+    quantity: Joi.number().min(0.001).required(),
+    costPerUnit: Joi.number().min(0).optional(),
+    reason: Joi.string().max(500).optional(),
+    wasteStage: Joi.string().valid('raw', 'preparation', 'cooking', 'serving', 'expired').required(),
+    notes: Joi.string().max(1000).optional(),
+  }),
+
   // Pagination schema
   pagination: Joi.object({
     page: Joi.number().integer().min(1).default(1),
